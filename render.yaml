@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: WorkshopM1Back
+    env: python
+    plan: free
+    region: frankfurt
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn -k eventlet -w 1 app:app"
+    pythonVersion: 3.12.3
