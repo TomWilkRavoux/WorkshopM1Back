@@ -7,7 +7,6 @@ import threading
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-
 # Solutions correctes pour chaque maladie
 SOLUTIONS = {
     "Grippe saisonnière": ["Paracétamol", "Oseltamivir"],
@@ -32,7 +31,6 @@ def health():
 def root():
     # 200 OK accepté par le test si /health n'est pas dispo
     return {"message": "backend up"}, 200
-
 
 @socketio.on("connect")
 def on_connect():
@@ -198,6 +196,26 @@ def submit_medication(data):
         "current_medications": rooms[room]["medications"]
     }, room=room)
 
+@socketio.on("remove_medication")
+def remove_medication(data):
+    username = data.get("username")
+    room = data.get("room")
+    medication = data.get("medication")
+    
+    if room not in rooms or rooms[room].get("game_over", False):
+        return
+    
+    if medication in rooms[room]["medications"]:
+        rooms[room]["medications"].remove(medication)
+    
+    print(f"[MEDICATION REMOVED] {room} - {username}: {medication}")
+    
+    emit("medication_removed", {
+        "username": username,
+        "medication": medication,
+        "current_medications": rooms[room]["medications"]
+    }, room=room)
+
 @socketio.on("validate_solution")
 def validate_solution(data):
     room = data.get("room")
@@ -291,7 +309,6 @@ def start_game(data):
         emit("server_message", {"msg": f"⏳ Partie lancée ({duration}s)!"}, room=room)
     else:
         emit("server_message", {"msg": "⚠️ Une partie est déjà en cours."}, room=room)
-
 
 
 if __name__ == "__main__":
