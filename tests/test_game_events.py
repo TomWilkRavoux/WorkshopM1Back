@@ -1,9 +1,22 @@
 # tests/test_game_events.py
+import sys
+import importlib.util
+from pathlib import Path
 import pytest
 
-# On importe TON module applicatif
-import app as appmod  # app.py à la racine
-# on récupère les symboles utiles
+# --- Import robuste de app.py (sans dépendre du PYTHONPATH) ---
+try:
+    import app as appmod
+except ModuleNotFoundError:
+    root = Path(__file__).resolve().parents[1]  # racine du repo
+    app_path = root / "app.py"
+    spec = importlib.util.spec_from_file_location("app", app_path)
+    appmod = importlib.util.module_from_spec(spec)
+    sys.modules["app"] = appmod
+    assert spec and spec.loader
+    spec.loader.exec_module(appmod)
+
+# Raccourcis utiles
 flask_app = appmod.app
 socketio = appmod.socketio
 rooms = appmod.rooms
@@ -25,42 +38,37 @@ def setup_room(room: str):
 
 @pytest.fixture(autouse=True)
 def clean_rooms():
-    # Avant chaque test : on repart d'un état propre
     rooms.clear()
     yield
     rooms.clear()
 
 
 def make_client():
-    """Crée un client Socket.IO de test lié à l'app Flask."""
     return socketio.test_client(flask_app, flask_test_client=flask_app.test_client())
 
 
 # 1) player_ready --------------------------------------------------------------
 def test_player_ready_sets_status_and_broadcasts():
     client = make_client()
-
     room = "r1"
     username = "alice"
 
-    # Le client rejoint d'abord la room (nécessaire pour recevoir les emits de room)
+    # Rejoindre la room pour recevoir les emits de room
     client.emit("join_room", {"username": username, "room": room})
-    client.get_received()  # on purge les messages d'accueil pour le test
+    client.get_received()  # purge
 
-    # On émet player_ready avec un rôle unique pour NE PAS démarrer le timer/partie
-    client.emit(
-        "player_ready", {"username": username, "room": room, "role": "Médecin"}
-    )
+    # Rôle unique pour ne PAS démarrer le timer
+    client.emit("player_ready", {"username": username, "room": room, "role": "Médecin"})
 
-    # L'état serveur doit marquer alice comme prête dans rooms
     assert room in rooms
     assert "alice" in rooms[room]["ready_players"]
     assert rooms[room]["ready_players"]["alice"]["role"] == "Médecin"
 
-    # Et un événement 'player_status_update' doit être diffusé dans la room
     events = client.get_received()
     names = [e["name"] for e in events]
     assert "player_status_update" in names
+
+    client.disconnect()
 
 
 # 2) submit_diagnosis ----------------------------------------------------------
@@ -70,8 +78,7 @@ def test_submit_diagnosis_sets_value_and_emits():
     username = "bob"
 
     client.emit("join_room", {"username": username, "room": room})
-    setup_room(room)  # on garantit que la room existe côté serveur
-
+    setup_room(room)
     client.get_received()  # purge
 
     client.emit(
@@ -79,12 +86,11 @@ def test_submit_diagnosis_sets_value_and_emits():
         {"username": username, "room": room, "diagnosis": "Grippe saisonnière"},
     )
 
-    # L'état serveur doit être mis à jour
     assert rooms[room]["diagnosis"] == "Grippe saisonnière"
-
-    # Et un événement de confirmation doit être reçu
     events = client.get_received()
     assert any(e["name"] == "diagnosis_submitted" for e in events)
+
+    client.disconnect()
 
 
 # 3) submit_medication ---------------------------------------------------------
@@ -95,25 +101,20 @@ def test_submit_medication_appends_once_and_emits():
 
     client.emit("join_room", {"username": username, "room": room})
     setup_room(room)
-
     client.get_received()  # purge
 
     med = "Paracétamol"
-    client.emit(
-        "submit_medication", {"username": username, "room": room, "medication": med}
-    )
-    client.emit(
-        "submit_medication", {"username": username, "room": room, "medication": med}
-    )  # pas de doublon
+    client.emit("submit_medication", {"username": username, "room": room, "medication": med})
+    client.emit("submit_medication", {"username": username, "room": room, "medication": med})  # pas de doublon
 
-    # La médication ne doit apparaître qu'une seule fois
     assert rooms[room]["medications"].count(med) == 1
-
     events = client.get_received()
     assert any(e["name"] == "medication_submitted" for e in events)
 
+    client.disconnect()
 
-# 4) validate_solution (cas victoire) -----------------------------------------
+
+# 4) validate_solution (victoire) ----------------------------------------------
 def test_validate_solution_victory_path():
     client = make_client()
     room = "r4"
@@ -121,20 +122,19 @@ def test_validate_solution_victory_path():
 
     client.emit("join_room", {"username": username, "room": room})
     setup_room(room)
-
-    # On aligne l'état de la room sur une solution correcte
-    diagnosis = "Grippe saisonnière"
-    meds = SOLUTIONS[diagnosis]  # ["Paracétamol", "Oseltamivir"]
-
-    rooms[room]["diagnosis"] = diagnosis
-    rooms[room]["medications"] = meds.copy()
-
     client.get_received()  # purge
 
-    # Quand on valide, le serveur doit annoncer "victory"
+    diagnosis = "Grippe saisonnière"
+    meds = SOLUTIONS[diagnosis].copy()  # ["Paracétamol", "Oseltamivir"]
+
+    rooms[room]["diagnosis"] = diagnosis
+    rooms[room]["medications"] = meds
+
     client.emit("validate_solution", {"room": room})
 
     events = client.get_received()
     payloads = [e["args"][0] for e in events if e["name"] == "game_result"]
     assert payloads, f"Pas d'événement 'game_result' reçu: {events}"
     assert payloads[-1]["result"] == "victory"
+
+    client.disconnect()
