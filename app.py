@@ -23,8 +23,11 @@ socketio = SocketIO(
     app, 
     cors_allowed_origins=ALLOWED_ORIGINS,
     async_mode='threading',
-    ping_timeout=60,
-    ping_interval=25
+    ping_timeout=120,  # Augmenté pour Render
+    ping_interval=25,
+    transports=['polling', 'websocket'],  # ✅ Ajout explicite des transports
+    logger=True,  # ✅ Pour débugger
+    engineio_logger=True  # ✅ Pour débugger
 )
 
 # Solutions correctes pour chaque maladie
