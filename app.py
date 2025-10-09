@@ -7,6 +7,7 @@ import threading
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+
 # Solutions correctes pour chaque maladie
 SOLUTIONS = {
     "Grippe saisonnière": ["Paracétamol", "Oseltamivir"],
@@ -20,6 +21,18 @@ rooms = {}
 @app.route("/api/test")
 def test():
     return {"message": "Backend Flask prêt"}
+
+# --- routes santé minimales (pour la CI/tests) ---
+@app.get("/health")
+def health():
+    # 200 OK attendu par le test
+    return {"status": "ok"}, 200
+
+@app.get("/")
+def root():
+    # 200 OK accepté par le test si /health n'est pas dispo
+    return {"message": "backend up"}, 200
+
 
 @socketio.on("connect")
 def on_connect():
