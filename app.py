@@ -1,6 +1,5 @@
 import os
 from flask import Flask
-from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import time
 import threading
@@ -9,26 +8,8 @@ app = Flask(__name__)
 # socketio = SocketIO(app, cors_allowed_origins="*")
 
 
-ALLOWED_ORIGINS = [
-    "https://workshop-m1.vercel.app",  # ⚠️ Remplacez par votre URL Vercel
-    "http://localhost:5173",  # Pour le développement local
-    "http://localhost:3000"   # Au cas où
-]
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-# ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
-
-CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
-
-socketio = SocketIO(
-    app, 
-    cors_allowed_origins=ALLOWED_ORIGINS,
-    async_mode='threading',
-    ping_timeout=120,  # Augmenté pour Render
-    ping_interval=25,
-    transports=['polling', 'websocket'],  # ✅ Ajout explicite des transports
-    logger=True,  # ✅ Pour débugger
-    engineio_logger=True  # ✅ Pour débugger
-)
 
 # Solutions correctes pour chaque maladie
 SOLUTIONS = {
